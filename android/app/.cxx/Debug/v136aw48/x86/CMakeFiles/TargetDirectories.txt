@@ -1,0 +1,6 @@
+/app/frontend/textToSpeech/android/app/.cxx/Debug/v136aw48/x86/CMakeFiles/appmodules.dir
+/app/frontend/textToSpeech/android/app/.cxx/Debug/v136aw48/x86/CMakeFiles/edit_cache.dir
+/app/frontend/textToSpeech/android/app/.cxx/Debug/v136aw48/x86/CMakeFiles/rebuild_cache.dir
+/app/frontend/textToSpeech/android/app/.cxx/Debug/v136aw48/x86/safeareacontext_autolinked_build/CMakeFiles/react_codegen_safeareacontext.dir
+/app/frontend/textToSpeech/android/app/.cxx/Debug/v136aw48/x86/safeareacontext_autolinked_build/CMakeFiles/edit_cache.dir
+/app/frontend/textToSpeech/android/app/.cxx/Debug/v136aw48/x86/safeareacontext_autolinked_build/CMakeFiles/rebuild_cache.dir
