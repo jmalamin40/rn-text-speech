@@ -2,3 +2,8 @@
 __tests__
 /android
 /ios
+
+# Keystore files (NEVER commit these!)
+*.keystore
+android/keystore.properties
+android/app/my-release-key.keystore
