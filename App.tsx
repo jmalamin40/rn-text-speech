@@ -639,8 +639,8 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
 
 const createStyles = (colors: any, insets: any) =>
   StyleSheet.create({
-    container: {
-      flex: 1,
+  container: {
+    flex: 1,
       backgroundColor: colors.background,
     },
     scrollView: {
@@ -903,7 +903,7 @@ const createStyles = (colors: any, insets: any) =>
       fontSize: 16,
       fontWeight: '700',
       letterSpacing: 0.3,
-    },
-  });
+  },
+});
 
 export default App;
