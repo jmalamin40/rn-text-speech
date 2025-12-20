@@ -1,1 +1,0 @@
-/app/frontend/textToSpeech/android/app/build/intermediates/cxx/Debug/v136aw48/obj/x86

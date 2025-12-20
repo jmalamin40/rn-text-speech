@@ -1,4 +1,0 @@
-/app/frontend/textToSpeech/android/app/.cxx/Debug/v136aw48/x86/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/foo.dir
-/app/frontend/textToSpeech/android/app/.cxx/Debug/v136aw48/x86/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/boo.dir
-/app/frontend/textToSpeech/android/app/.cxx/Debug/v136aw48/x86/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/edit_cache.dir
-/app/frontend/textToSpeech/android/app/.cxx/Debug/v136aw48/x86/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/rebuild_cache.dir
