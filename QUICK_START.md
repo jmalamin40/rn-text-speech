@@ -1,34 +1,71 @@
-# Quick Start Guide
+# Quick Start Guide - Text to Speech BD
 
-## Running the App
-
-Use `npm run android` instead of `npx react-native run-android` to ensure you're using the local React Native CLI from your project.
+## ✅ Use the Helper Script (Easiest)
 
 ```bash
-export ANDROID_HOME=$HOME/Android/Sdk
-export ANDROID_SDK_ROOT=$HOME/Android/Sdk
+./run-app.sh
+```
+
+This script will:
+- Check device connection
+- Setup port forwarding
+- Stop and restart the app with correct package name
+
+## 📱 Manual Commands
+
+### Start Metro Bundler
+```bash
+npm start
+```
+
+### Build and Run App
+```bash
 npm run android
 ```
 
-Or add these to your `~/.bashrc` or `~/.zshrc` to make them permanent:
-
+### Restart App Manually
 ```bash
-export ANDROID_HOME=$HOME/Android/Sdk
-export ANDROID_SDK_ROOT=$HOME/Android/Sdk
-export PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools
+# Stop app
+adb shell am force-stop com.texttospeech.bangla.hindi.english
+
+# Start app
+adb shell am start -n com.texttospeech.bangla.hindi.english/.MainActivity
+
+# Setup port forwarding
+adb reverse tcp:8081 tcp:8081
 ```
 
-## Project Setup Status
+### Reload App (when Metro is running)
+- **Option 1:** Shake device → Select "Reload"
+- **Option 2:** Press `R` in Metro bundler terminal
+- **Option 3:** Run: `adb shell input text "RR"`
 
-✅ Dependencies installed  
-✅ Android project structure exists  
-✅ `local.properties` configured with SDK path  
-✅ Device connected (6670d536)
+## ⚠️ Important Package Name
 
-## Common Commands
+**Always use:** `com.texttospeech.bangla.hindi.english`
 
-- `npm start` - Start Metro bundler
-- `npm run android` - Build and run on Android device/emulator
-- `npm run ios` - Build and run on iOS simulator (macOS only)
-- `npm test` - Run tests
+**Never use:** `com.texttospeechbd` (this doesn't exist!)
 
+## 🎁 Testing Rewarded Ads
+
+1. Open the app
+2. Look for the **"🎁 Watch Ad for Rewards"** button
+3. Wait a few seconds for the ad to load (button will show "⏳ Ad Loading..." initially)
+4. When button shows "🎁 Watch Ad for Rewards", tap it
+5. A test ad should appear (in development mode)
+
+## 🐛 Troubleshooting
+
+### App won't start
+- Check device is connected: `adb devices`
+- Verify package is installed: `adb shell pm list packages | grep texttospeech`
+- Use correct package name: `com.texttospeech.bangla.hindi.english`
+
+### Metro bundler not connecting
+- Ensure port forwarding: `adb reverse tcp:8081 tcp:8081`
+- Check Metro is running: `curl http://localhost:8081/status`
+
+### Ad not loading
+- Wait a few seconds after app starts (SDK initialization)
+- Check device has internet connection
+- In development, test ads should always work

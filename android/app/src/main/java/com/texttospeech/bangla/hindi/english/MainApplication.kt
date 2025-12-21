@@ -1,4 +1,4 @@
-package com.texttospeechbd
+package com.texttospeech.bangla.hindi.english
 
 import android.app.Application
 import com.facebook.react.PackageList
@@ -25,3 +25,5 @@ class MainApplication : Application(), ReactApplication {
     loadReactNative(this)
   }
 }
+
+

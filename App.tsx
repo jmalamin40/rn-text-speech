@@ -27,6 +27,7 @@ import {
 import Sound from 'react-native-sound';
 // @ts-ignore - react-native-fs doesn't have TypeScript definitions
 import RNFS from 'react-native-fs';
+import {adService} from './services/AdService';
 
 // Enable playback in silence mode (iOS)
 Sound.setCategory('Playback');
@@ -100,7 +101,11 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
   const [audioFilePath, setAudioFilePath] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasPlayPermission, setHasPlayPermission] = useState(false);
+  const [hasDownloadPermission, setHasDownloadPermission] = useState(false);
+  const [isAdServiceReady, setIsAdServiceReady] = useState(false);
   const soundRef = useRef<Sound | null>(null);
+  // Removed useRewardedAd hook - no longer needed without Watch Ad button
 
   // Bangladeshi Flag Colors - Green & Red
   const colors = {
@@ -136,7 +141,30 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
   };
 
   useEffect(() => {
+    // Check ad service status more frequently for better UX
+    const checkAdStatus = setInterval(() => {
+      if (adService && typeof adService.getLoadedStatus === 'function') {
+        const isReady = adService.getLoadedStatus();
+        setIsAdServiceReady(isReady);
+        // Log for debugging
+        if (!isReady) {
+          console.log('Ad service not ready yet...');
+        }
+      }
+    }, 500); // Check every 500ms for faster updates
+
+    // Initial check after delay
+    const initialCheck = setTimeout(() => {
+      if (adService && typeof adService.getLoadedStatus === 'function') {
+        const isReady = adService.getLoadedStatus();
+        setIsAdServiceReady(isReady);
+        console.log('Initial ad service check:', isReady);
+      }
+    }, 2000);
+
     return () => {
+      clearInterval(checkAdStatus);
+      clearTimeout(initialCheck);
       // Cleanup sound on unmount
       if (soundRef.current) {
         soundRef.current.stop();
@@ -154,6 +182,8 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
     setLoading(true);
     setError(null);
     setPlaying(false);
+    setHasPlayPermission(false);
+    setHasDownloadPermission(false);
 
     // Stop any currently playing sound
     if (soundRef.current) {
@@ -203,10 +233,18 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
             : `https://texttospeechfree.online${data.audio_file}`;
           
           console.log('Audio file URL:', audioUrl);
-          await playAudio(audioUrl);
+          // Store URL but don't auto-play - user must watch ad first
+          setAudioUrl(audioUrl);
+          setAudioFilePath(null);
+          setHasPlayPermission(false);
+          setHasDownloadPermission(false);
         } else if (data.url || data.audio_url) {
           // Fallback for other possible response formats
-          await playAudio(data.url || data.audio_url);
+          const audioUrl = data.url || data.audio_url;
+          setAudioUrl(audioUrl);
+          setAudioFilePath(null);
+          setHasPlayPermission(false);
+          setHasDownloadPermission(false);
         } else {
           throw new Error(data.message || 'No audio file received from API');
         }
@@ -225,7 +263,10 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
         const base64 = base64Encode(binary);
         
         await RNFS.writeFile(audioPath, base64, 'base64');
-        await playAudioFromPath(audioPath);
+        setAudioUrl(audioPath);
+        setAudioFilePath(audioPath);
+        setHasPlayPermission(false);
+        setHasDownloadPermission(false);
       }
     } catch (err: any) {
       console.error('Error generating speech:', err);
@@ -346,10 +387,101 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
     }
   };
 
+  // Removed handleWatchAd function - Watch Ad button is no longer needed
+
+  const handlePlayAudio = async () => {
+    if (!audioUrl) {
+      Alert.alert('Error', 'No audio file available');
+      return;
+    }
+
+    // If user already has permission, play directly
+    if (hasPlayPermission) {
+      if (audioFilePath && audioFilePath.startsWith('/')) {
+        await playAudioFromPath(audioFilePath);
+      } else {
+        await playAudio(audioUrl);
+      }
+      return;
+    }
+
+    // Show ad before playing
+    const adShown = await adService.show();
+    if (adShown) {
+      setHasPlayPermission(true);
+      // Wait a moment for ad to close, then play
+      setTimeout(async () => {
+        if (audioFilePath && audioFilePath.startsWith('/')) {
+          await playAudioFromPath(audioFilePath);
+        } else {
+          await playAudio(audioUrl);
+        }
+      }, 500);
+    } else {
+      Alert.alert(
+        'Ad Not Ready',
+        'Please wait a moment for the ad to load, then try again.',
+        [{text: 'OK'}],
+      );
+    }
+  };
+
   const downloadAudio = async () => {
     if (!audioUrl) {
       Alert.alert('Error', 'No audio file available to download');
       return;
+    }
+
+    // If user already has permission, download directly
+    if (!hasDownloadPermission) {
+      console.log('Download: Showing ad before download...');
+      console.log('Current ad service ready status:', adService.getLoadedStatus());
+      
+      // Check if ad is ready, if not wait a bit first
+      if (!adService.getLoadedStatus()) {
+        console.log('Download: Ad not ready, waiting 2 seconds for it to load...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // If still not ready, try to force reload
+        if (!adService.getLoadedStatus()) {
+          console.log('Download: Ad still not ready, attempting force reload...');
+          if (adService.forceReload) {
+            await adService.forceReload();
+            // Wait a bit more for the reload
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
+      
+      // Show ad before downloading
+      const adShown = await adService.show();
+      console.log('Download: Ad shown result:', adShown);
+      
+      if (!adShown) {
+        // Give it a moment and check again
+        console.log('Download: Ad not shown, waiting and retrying...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const retryShown = await adService.show();
+        
+        if (!retryShown) {
+          Alert.alert(
+            'Ad Not Ready',
+            'The ad is taking longer to load. Please try again in a moment.',
+            [{text: 'OK'}],
+          );
+          // Try to reload for next time
+          if (adService.forceReload) {
+            adService.forceReload();
+          }
+          return;
+        }
+        setHasDownloadPermission(true);
+        await new Promise(resolve => setTimeout(resolve, 500));
+      } else {
+        setHasDownloadPermission(true);
+        // Wait a moment for ad to close
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
 
     setDownloading(true);
@@ -582,24 +714,6 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
           </View>
         )}
 
-        {/* Download Button - Show before Generate if audio exists */}
-        {audioUrl && !loading && (
-          <TouchableOpacity
-            style={[styles.downloadButton, downloading && styles.downloadButtonDisabled]}
-            onPress={downloadAudio}
-            disabled={downloading}
-          >
-            {downloading ? (
-              <View style={styles.buttonContent}>
-                <ActivityIndicator color="#ffffff" size="small" />
-                <Text style={styles.downloadButtonText}>Downloading...</Text>
-              </View>
-            ) : (
-              <Text style={styles.downloadButtonText}>⬇️ Download</Text>
-            )}
-          </TouchableOpacity>
-        )}
-
         {/* Generate Button */}
         <TouchableOpacity
           style={[styles.generateButton, loading && styles.generateButtonDisabled]}
@@ -618,17 +732,67 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
           )}
         </TouchableOpacity>
 
-        {/* Audio Controls - Stop Button */}
+        {/* Play and Download Buttons - Show after audio is generated */}
         {audioUrl && !loading && (
+          <View style={styles.audioActionButtons}>
+            {/* Play Button - Shows ad before playing */}
+            <TouchableOpacity
+              style={[
+                styles.playButton, 
+                playing && styles.playButtonActive,
+                !isAdServiceReady && !hasPlayPermission && styles.playButtonDisabled
+              ]}
+              onPress={handlePlayAudio}
+              disabled={playing || (!isAdServiceReady && !hasPlayPermission)}
+            >
+              {playing ? (
+                <View style={styles.buttonContent}>
+                  <ActivityIndicator color="#ffffff" size="small" />
+                  <Text style={styles.playButtonText}>Playing...</Text>
+                </View>
+              ) : (
+                <Text style={styles.playButtonText}>
+                  {hasPlayPermission 
+                    ? '▶️ Play' 
+                    : isAdServiceReady 
+                    ? '📺 Watch Ad to Play' 
+                    : '⏳ Please Wait...'}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Download Button - Shows ad before downloading */}
+            <TouchableOpacity
+              style={[styles.downloadButton, downloading && styles.downloadButtonDisabled, !isAdServiceReady && !hasDownloadPermission && styles.downloadButtonDisabled]}
+              onPress={downloadAudio}
+              disabled={downloading || (!isAdServiceReady && !hasDownloadPermission)}
+            >
+              {downloading ? (
+                <View style={styles.buttonContent}>
+                  <ActivityIndicator color="#ffffff" size="small" />
+                  <Text style={styles.downloadButtonText}>Downloading...</Text>
+                </View>
+              ) : (
+                <Text style={styles.downloadButtonText}>
+                  {hasDownloadPermission 
+                    ? '⬇️ Download' 
+                    : isAdServiceReady 
+                    ? '📺 Watch Ad to Download' 
+                    : '⏳ Please Wait...'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Audio Controls - Stop Button */}
+        {audioUrl && !loading && playing && (
           <View style={styles.audioControls}>
             <TouchableOpacity
               style={styles.stopButton}
               onPress={stopAudio}
-              disabled={!playing}
             >
-              <Text style={styles.stopButtonText}>
-                {playing ? '⏸ Stop' : '⏹ Stopped'}
-              </Text>
+              <Text style={styles.stopButtonText}>⏸ Stop</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -881,14 +1045,45 @@ const createStyles = (colors: any, insets: any) =>
       fontSize: 16,
       fontWeight: '700',
     },
+    audioActionButtons: {
+      flexDirection: 'row',
+      gap: 12,
+      marginHorizontal: 20,
+      marginTop: 12,
+      marginBottom: 12,
+    },
+    playButton: {
+      flex: 1,
+      backgroundColor: colors.success,
+      borderRadius: 14,
+      padding: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: colors.success,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 5,
+    },
+    playButtonActive: {
+      backgroundColor: colors.primary,
+    },
+    playButtonDisabled: {
+      opacity: 0.6,
+    },
+    playButtonText: {
+      color: '#FFFFFF',
+      fontSize: 15,
+      fontWeight: '700',
+      letterSpacing: 0.3,
+    },
     downloadButton: {
+      flex: 1,
       backgroundColor: colors.primary,
       borderRadius: 14,
       padding: 16,
       alignItems: 'center',
       justifyContent: 'center',
-      marginHorizontal: 20,
-      marginBottom: 12,
       shadowColor: colors.primary,
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.3,
@@ -898,12 +1093,13 @@ const createStyles = (colors: any, insets: any) =>
     downloadButtonDisabled: {
       opacity: 0.6,
     },
+    // Removed watchAdButton styles - button is no longer used
     downloadButtonText: {
       color: '#FFFFFF',
       fontSize: 16,
       fontWeight: '700',
       letterSpacing: 0.3,
-  },
+    },
 });
 
 export default App;
