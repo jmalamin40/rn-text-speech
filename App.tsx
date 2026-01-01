@@ -101,7 +101,6 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
   const [audioFilePath, setAudioFilePath] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasPlayPermission, setHasPlayPermission] = useState(false);
   const [hasDownloadPermission, setHasDownloadPermission] = useState(false);
   const [isAdServiceReady, setIsAdServiceReady] = useState(false);
   const soundRef = useRef<Sound | null>(null);
@@ -179,18 +178,64 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
       return;
     }
 
-    setLoading(true);
-    setError(null);
-    setPlaying(false);
-    setHasPlayPermission(false);
-    setHasDownloadPermission(false);
-
     // Stop any currently playing sound
     if (soundRef.current) {
       soundRef.current.stop();
       soundRef.current.release();
       soundRef.current = null;
     }
+
+    // Show ad before generating
+    console.log('Generate: Showing ad before generation...');
+    console.log('Current ad service ready status:', adService.getLoadedStatus());
+    
+    // Check if ad is ready, if not wait a bit first
+    if (!adService.getLoadedStatus()) {
+      console.log('Generate: Ad not ready, waiting 2 seconds for it to load...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // If still not ready, try to force reload
+      if (!adService.getLoadedStatus()) {
+        console.log('Generate: Ad still not ready, attempting force reload...');
+        if (adService.forceReload) {
+          await adService.forceReload();
+          // Wait a bit more for the reload
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+    }
+    
+    // Show ad before generating
+    const adShown = await adService.show();
+    console.log('Generate: Ad shown result:', adShown);
+    
+    if (!adShown) {
+      // Give it a moment and check again
+      console.log('Generate: Ad not shown, waiting and retrying...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const retryShown = await adService.show();
+      
+      if (!retryShown) {
+        Alert.alert(
+          'Ad Not Ready',
+          'The ad is taking longer to load. Please try again in a moment.',
+          [{text: 'OK'}],
+        );
+        // Try to reload for next time
+        if (adService.forceReload) {
+          adService.forceReload();
+        }
+        return;
+      }
+    }
+    
+    // Wait a moment for ad to close
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    setLoading(true);
+    setError(null);
+    setPlaying(false);
+    setHasDownloadPermission(false);
 
     try {
       // Create FormData
@@ -233,18 +278,25 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
             : `https://texttospeechfree.online${data.audio_file}`;
           
           console.log('Audio file URL:', audioUrl);
-          // Store URL but don't auto-play - user must watch ad first
           setAudioUrl(audioUrl);
           setAudioFilePath(null);
-          setHasPlayPermission(false);
           setHasDownloadPermission(false);
+          
+          // Auto-play after generation
+          setTimeout(async () => {
+            await playAudio(audioUrl);
+          }, 300);
         } else if (data.url || data.audio_url) {
           // Fallback for other possible response formats
           const audioUrl = data.url || data.audio_url;
           setAudioUrl(audioUrl);
           setAudioFilePath(null);
-          setHasPlayPermission(false);
           setHasDownloadPermission(false);
+          
+          // Auto-play after generation
+          setTimeout(async () => {
+            await playAudio(audioUrl);
+          }, 300);
         } else {
           throw new Error(data.message || 'No audio file received from API');
         }
@@ -265,8 +317,12 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
         await RNFS.writeFile(audioPath, base64, 'base64');
         setAudioUrl(audioPath);
         setAudioFilePath(audioPath);
-        setHasPlayPermission(false);
         setHasDownloadPermission(false);
+        
+        // Auto-play after generation
+        setTimeout(async () => {
+          await playAudioFromPath(audioPath);
+        }, 300);
       }
     } catch (err: any) {
       console.error('Error generating speech:', err);
@@ -395,34 +451,11 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
       return;
     }
 
-    // If user already has permission, play directly
-    if (hasPlayPermission) {
-      if (audioFilePath && audioFilePath.startsWith('/')) {
-        await playAudioFromPath(audioFilePath);
-      } else {
-        await playAudio(audioUrl);
-      }
-      return;
-    }
-
-    // Show ad before playing
-    const adShown = await adService.show();
-    if (adShown) {
-      setHasPlayPermission(true);
-      // Wait a moment for ad to close, then play
-      setTimeout(async () => {
-        if (audioFilePath && audioFilePath.startsWith('/')) {
-          await playAudioFromPath(audioFilePath);
-        } else {
-          await playAudio(audioUrl);
-        }
-      }, 500);
+    // Play directly without showing ads (ads are shown during generation)
+    if (audioFilePath && audioFilePath.startsWith('/')) {
+      await playAudioFromPath(audioFilePath);
     } else {
-      Alert.alert(
-        'Ad Not Ready',
-        'Please wait a moment for the ad to load, then try again.',
-        [{text: 'OK'}],
-      );
+      await playAudio(audioUrl);
     }
   };
 
@@ -714,9 +747,9 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
           </View>
         )}
 
-        {/* Generate Button */}
+        {/* Generate Button - Shows ad then generates and auto-plays */}
         <TouchableOpacity
-          style={[styles.generateButton, loading && styles.generateButtonDisabled]}
+          style={[styles.generateButton, (loading || playing) && styles.generateButtonDisabled]}
           onPress={generateSpeech}
           disabled={loading || playing}
         >
@@ -735,15 +768,14 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
         {/* Play and Download Buttons - Show after audio is generated */}
         {audioUrl && !loading && (
           <View style={styles.audioActionButtons}>
-            {/* Play Button - Shows ad before playing */}
+            {/* Play Button - Plays directly without ads */}
             <TouchableOpacity
               style={[
                 styles.playButton, 
-                playing && styles.playButtonActive,
-                !isAdServiceReady && !hasPlayPermission && styles.playButtonDisabled
+                playing && styles.playButtonActive
               ]}
               onPress={handlePlayAudio}
-              disabled={playing || (!isAdServiceReady && !hasPlayPermission)}
+              disabled={playing}
             >
               {playing ? (
                 <View style={styles.buttonContent}>
@@ -751,13 +783,7 @@ function AppContent({ isDarkMode }: { isDarkMode: boolean }) {
                   <Text style={styles.playButtonText}>Playing...</Text>
                 </View>
               ) : (
-                <Text style={styles.playButtonText}>
-                  {hasPlayPermission 
-                    ? '▶️ Play' 
-                    : isAdServiceReady 
-                    ? '📺 Watch Ad to Play' 
-                    : '⏳ Please Wait...'}
-                </Text>
+                <Text style={styles.playButtonText}>▶️ Play</Text>
               )}
             </TouchableOpacity>
 
